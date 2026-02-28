@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import time
 import uuid
@@ -12,7 +13,7 @@ import numpy as np
 import scipy.io.wavfile as wavfile
 
 from config.settings import settings
-from models.data import Speaker, SpeakerSegment
+from models.data import Speaker, SpeakerSegment, TTSUnavailableError
 from tts.voice_config import get_voice
 from utils.helpers import get_logger
 
@@ -25,43 +26,96 @@ log = get_logger(__name__)
 # Maximum age (seconds) before an orphaned run directory is considered stale
 _MAX_RUN_AGE_SECONDS = 60 * 60  # 1 hour
 
+# ---------------------------------------------------------------------------
+# TTS availability detection
+# ---------------------------------------------------------------------------
+# Set DISABLE_TTS=1 in env / Streamlit secrets to skip TTS entirely.
+# Auto-detection also catches ImportError (missing deps) and MemoryError.
+_TTS_FORCE_DISABLED = os.environ.get("DISABLE_TTS", "").lower() in ("1", "true", "yes")
+_tts_available: bool = not _TTS_FORCE_DISABLED
+_tts_unavailable_reason: str = (
+    "TTS explicitly disabled via DISABLE_TTS env var" if _TTS_FORCE_DISABLED else ""
+)
+
 # Lazy-loaded TTS model
 _tts_model = None
 
 
-def _get_model():
-    """Lazy-load the Coqui TTS model (heavy, ~1.8 GB)."""
-    global _tts_model
-    if _tts_model is None:
-        log.info("Loading TTS model: %s (this may take a moment)...", settings.coqui_model_name)
-        
-        # Add safe globals for PyTorch 2.6+ security
-        # Coqui TTS is a trusted source, so we allowlist its config/model classes
-        import torch
-        safe_globals_list = []
-        try:
-            from TTS.tts.configs.xtts_config import XttsConfig
-            safe_globals_list.append(XttsConfig)
-        except ImportError:
-            pass
-        try:
-            from TTS.tts.models.xtts import XttsAudioConfig, XttsArgs
-            safe_globals_list.extend([XttsAudioConfig, XttsArgs])
-        except ImportError:
-            pass
-        try:
-            from TTS.config.shared_configs import BaseDatasetConfig
-            safe_globals_list.append(BaseDatasetConfig)
-        except ImportError:
-            pass
-        
-        if safe_globals_list:
-            torch.serialization.add_safe_globals(safe_globals_list)
-        
-        from TTS.api import TTS
+def is_tts_available() -> bool:
+    """Return whether TTS synthesis is available on this deployment."""
+    return _tts_available
 
-        _tts_model = TTS(model_name=settings.coqui_model_name)
-        log.info("TTS model loaded successfully")
+
+def _require_tts() -> None:
+    """Raise TTSUnavailableError if TTS is not usable."""
+    if not _tts_available:
+        raise TTSUnavailableError(_tts_unavailable_reason)
+
+
+def _get_model():
+    """Lazy-load the Coqui TTS model (heavy, ~1.8 GB).
+
+    If the model cannot be loaded (missing deps, OOM, etc.) the global
+    ``_tts_available`` flag is set to ``False`` so subsequent calls fail
+    fast with :class:`TTSUnavailableError`.
+    """
+    global _tts_model, _tts_available, _tts_unavailable_reason
+
+    _require_tts()  # fast-fail if already known-unavailable
+
+    if _tts_model is None:
+        try:
+            log.info("Loading TTS model: %s (this may take a moment)...", settings.coqui_model_name)
+
+            # Add safe globals for PyTorch 2.6+ security
+            # Coqui TTS is a trusted source, so we allowlist its config/model classes
+            import torch
+            safe_globals_list = []
+            try:
+                from TTS.tts.configs.xtts_config import XttsConfig
+                safe_globals_list.append(XttsConfig)
+            except ImportError:
+                pass
+            try:
+                from TTS.tts.models.xtts import XttsAudioConfig, XttsArgs
+                safe_globals_list.extend([XttsAudioConfig, XttsArgs])
+            except ImportError:
+                pass
+            try:
+                from TTS.config.shared_configs import BaseDatasetConfig
+                safe_globals_list.append(BaseDatasetConfig)
+            except ImportError:
+                pass
+
+            if safe_globals_list:
+                torch.serialization.add_safe_globals(safe_globals_list)
+
+            from TTS.api import TTS
+
+            _tts_model = TTS(model_name=settings.coqui_model_name)
+            log.info("TTS model loaded successfully")
+
+        except ImportError as exc:
+            reason = f"TTS dependencies not installed: {exc}"
+            log.warning(reason)
+            _tts_available = False
+            _tts_unavailable_reason = reason
+            raise TTSUnavailableError(reason) from exc
+
+        except MemoryError as exc:
+            reason = "Not enough memory to load the TTS model (needs ~2 GB)"
+            log.warning(reason)
+            _tts_available = False
+            _tts_unavailable_reason = reason
+            raise TTSUnavailableError(reason) from exc
+
+        except Exception as exc:
+            reason = f"Failed to load TTS model: {exc}"
+            log.warning(reason)
+            _tts_available = False
+            _tts_unavailable_reason = reason
+            raise TTSUnavailableError(reason) from exc
+
     return _tts_model
 
 
@@ -77,7 +131,12 @@ def synthesize_segment(
 
     Returns:
         Path to the generated WAV file.
+
+    Raises:
+        TTSUnavailableError: If TTS is disabled or could not be loaded.
     """
+    _require_tts()
+
     output_dir = output_dir or settings.segments_path
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -135,7 +194,12 @@ def synthesize_all(
     Returns:
         Tuple of (list of WAV paths, run_dir). Pass run_dir to cleanup_run()
         after assembly to free disk space.
+
+    Raises:
+        TTSUnavailableError: If TTS is disabled or could not be loaded.
     """
+    _require_tts()
+
     base_dir = Path(output_dir or settings.segments_path)
 
     # Each run gets its own isolated subdirectory — safe for concurrent users

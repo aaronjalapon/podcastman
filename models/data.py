@@ -9,6 +9,17 @@ from datetime import datetime
 from enum import Enum
 
 
+# ── Exceptions ───────────────────────────────────────────────────────────────
+
+
+class TTSUnavailableError(RuntimeError):
+    """Raised when TTS cannot be used (missing deps, OOM, or explicitly disabled)."""
+
+    def __init__(self, reason: str = "TTS is unavailable on this deployment") -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
 # ── Content Models ───────────────────────────────────────────────────────────
 
 
