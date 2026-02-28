@@ -12,48 +12,12 @@ uv sync
 cp .env.example .env
 # Edit .env with your API keys
 
-# Run the Streamlit frontend (auto-starts the backend)
-uv run streamlit run frontend/app.py
-
-# Or run the API server directly
+# Run the API server
 uv run uvicorn api.main:app --reload
+
+# Or run the full pipeline directly
+uv run python -m podcastman.cli --url "https://example.com/blog-post"
 ```
-
-## Streamlit Cloud Deployment
-
-1. Push this repo to GitHub.
-
-2. Go to [share.streamlit.io](https://share.streamlit.io) and create a new app:
-   - **Repository**: your GitHub repo
-   - **Main file path**: `frontend/app.py`
-
-3. In the app **Settings → Secrets**, add your API keys (see `.streamlit/secrets.toml.example`):
-   ```toml
-   LLM_MODEL = "gpt-4o"
-   LLM_API_KEY = "sk-..."
-   EMBEDDING_MODEL = "text-embedding-3-small"
-   EMBEDDING_API_KEY = "sk-..."
-   ```
-
-4. Deploy. The app auto-starts the FastAPI backend as a subprocess.
-
-**Note:** Streamlit Community Cloud has resource limits. The Coqui XTTS v2 model
-requires ~1.8 GB of memory. If you hit memory limits, consider deploying on a
-VPS or cloud VM instead (`streamlit run frontend/app.py`).
-
-### Voice Customization
-
-Replace the reference WAV files in `voices/` to change the podcast host voices:
-
-| Speaker | File | Description |
-|---------|------|-------------|
-| Host A | `voices/host_a.wav` | Main presenter |
-| Host B | `voices/host_b.wav` | Co-host |
-
-Requirements: 6–10 seconds of clear speech, WAV format, mono, 22050 Hz.
-
-To rename the hosts, edit `tts/voice_config.py` — the names flow automatically
-into script generation prompts, dialogue parsing, and the Streamlit UI.
 
 ## Architecture
 

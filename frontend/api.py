@@ -1,11 +1,9 @@
 """HTTP client for the podcastman FastAPI backend."""
 from __future__ import annotations
 
-import os
-
 import requests
 
-API_BASE = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
+API_BASE = "http://localhost:8000/api/v1"
 
 
 def _post(path: str, payload: dict) -> dict:

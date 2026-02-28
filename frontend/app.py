@@ -3,82 +3,19 @@
 Run with:
     streamlit run frontend/app.py
 
-The FastAPI backend is auto-started on http://localhost:8000 if not
-already running. No need to launch uvicorn manually.
+Requires the FastAPI backend running on http://localhost:8000
+    uvicorn api.main:app --reload
 """
 from __future__ import annotations
 
-import os
-import re
-import subprocess
 import sys
 import time
 from pathlib import Path
 
-import requests
 import streamlit as st
 
 # Make the project root importable so `frontend/api.py` can be found
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(_PROJECT_ROOT))
-
-
-# ---------------------------------------------------------------------------
-# Bridge st.secrets → os.environ (for Streamlit Cloud deployment)
-# ---------------------------------------------------------------------------
-def _bridge_secrets_to_env() -> None:
-    """Copy Streamlit secrets into os.environ so pydantic-settings picks them up."""
-    try:
-        for key, value in st.secrets.items():
-            if isinstance(value, str) and key not in os.environ:
-                os.environ[key] = value
-    except Exception:
-        pass  # No secrets configured — running locally with .env
-
-
-_bridge_secrets_to_env()
-
-
-# ---------------------------------------------------------------------------
-# Auto-start FastAPI backend
-# ---------------------------------------------------------------------------
-_BACKEND_URL = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1")
-_HEALTH_URL = _BACKEND_URL.rsplit("/api/v1", 1)[0] + "/health"
-
-
-def _backend_is_running() -> bool:
-    """Check if the FastAPI backend responds at /health."""
-    try:
-        resp = requests.get(_HEALTH_URL, timeout=2)
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-
-def _ensure_backend() -> None:
-    """Launch uvicorn as a subprocess if the backend isn't already running."""
-    if _backend_is_running():
-        return
-
-    # Launch backend from the project root
-    subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "api.main:app",
-         "--host", "0.0.0.0", "--port", "8000"],
-        cwd=str(_PROJECT_ROOT),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-    # Wait for it to become healthy (up to 30 seconds)
-    for _ in range(30):
-        if _backend_is_running():
-            return
-        time.sleep(1)
-
-
-_ensure_backend()
-
 import api as backend  # noqa: E402  (local api.py)
 
 # ---------------------------------------------------------------------------
@@ -360,35 +297,16 @@ def render_script_view() -> None:
     with col2:
         st.metric("Segments", segment_count)
 
-    # Build a regex that matches HOST_A/HOST_B or the persona names (Mike/Sarah)
-    try:
-        from tts.voice_config import HOST_A as VOICE_A, HOST_B as VOICE_B
-        host_a_name, host_b_name = VOICE_A.name, VOICE_B.name
-    except Exception:
-        host_a_name, host_b_name = "Mike", "Sarah"
-
-    # Match "HOST_A:", "Mike:", "**Mike:**" etc. at the start of a line
-    _speaker_re = re.compile(
-        rf"^\*{{0,2}}({re.escape(host_a_name)}|HOST_A)\*{{0,2}}\s*:\s*(.*)",
-        re.IGNORECASE,
-    )
-    _speaker_b_re = re.compile(
-        rf"^\*{{0,2}}({re.escape(host_b_name)}|HOST_B)\*{{0,2}}\s*:\s*(.*)",
-        re.IGNORECASE,
-    )
-
     # Render dialogue
     lines = [l for l in script.splitlines() if l.strip()]
     for line in lines:
-        m_a = _speaker_re.match(line.strip())
-        m_b = _speaker_b_re.match(line.strip())
-        if m_a:
-            text = m_a.group(2).strip()
-            with st.chat_message(host_a_name, avatar="🌤"):
+        if line.startswith("HOST_A:"):
+            text = line[len("HOST_A:"):].strip()
+            with st.chat_message("HOST A", avatar="�"):
                 st.write(text)
-        elif m_b:
-            text = m_b.group(2).strip()
-            with st.chat_message(host_b_name, avatar="🎧"):
+        elif line.startswith("HOST_B:"):
+            text = line[len("HOST_B:"):].strip()
+            with st.chat_message("HOST B", avatar="🎧"):
                 st.write(text)
         else:
             st.caption(line.strip())
