@@ -1,0 +1,238 @@
+% ---------------------------------------------------------------
+%  ACM Conference Paper -- Blog-to-Podcast Conversion System
+% ---------------------------------------------------------------
+\documentclass[sigconf,natbib=false]{acmart}   % turn off natbib (required for biblatex)
+
+% ---------------------------------------------------------------
+%  Packages (do **not** load hyperref or doi -- acmart already does that) 
+% ---------------------------------------------------------------
+\usepackage{booktabs}          % Professional tables
+\usepackage{graphicx}          % Figures
+\usepackage{xcolor}           % Coloured text (optional)
+\usepackage{enumitem}          % Better lists
+\usepackage{adjustbox}         % For scaling graphics
+\usepackage{float}             % Precise figure placement
+\usepackage{caption}           % Caption styling
+
+% ---------------------------------------------------------------
+%  Bibliography -- biblatex (IEEE numeric style)
+% ---------------------------------------------------------------
+\usepackage[style=ieee]{biblatex}
+\addbibresource{references.bib}   % <- your .bib file
+
+% ---------------------------------------------------------------
+%  Metadata (fill in your own details)
+% ---------------------------------------------------------------
+\title{Blog-to-Podcast Conversion System \\[1ex]
+       with AI Voice Generation Using Retrieval-Augmented Generation Agents}
+\author{Aaron Jalapon}
+\affiliation{%
+  \institution{University of Mindanao}
+  \city{Davao City}
+  \country{Philippines}}
+\email{a.jalapon.548769@umindanao.edu.ph}
+
+% ---------------------------------------------------------------
+%  BEGIN DOCUMENT
+% ---------------------------------------------------------------
+\begin{document}
+
+% ----- ABSTRACT must appear *before* \maketitle (the class requires this)
+\begin{abstract}
+   Consuming written content while on the move is increasingly popular, yet many
+   high-quality blog articles lack an audio counterpart.  This paper presents an
+   end-to-end AI system that transforms any blog post into a two-host podcast
+   dialogue and synthesises natural-sounding speech via voice cloning.  The
+   pipeline follows a four-layer architecture: (1) input \& pre-processing with
+   custom semantic chunking, (2) retrieval via a ChromaDB vector store with
+   OpenAI embeddings, (3) generation with four specialised Retrieval-Augmented
+   Generation agents orchestrated by a LangGraph state machine, and (4) two-voice
+   audio output using Coqui XTTS~v2 with reference-based voice cloning.  A
+   Next.js frontend and FastAPI backend provide a complete web interface for the
+   blog-to-podcast workflow.
+\end{abstract}
+\keywords{Retrieval-Augmented Generation, Multi-Agent Systems, Text-to-Speech,
+          Podcast Generation, Large Language Models, LangGraph, LiteLLM,
+          ChromaDB, Vector Databases}
+
+\maketitle                                   % after abstract \& keywords
+
+% ---------------------------------------------------------------
+%  MAIN BODY
+% ---------------------------------------------------------------
+\section{Introduction}\label{sec:intro}
+The explosion of online written content---blogs, tutorials, news articles---has created a demand for alternative consumption modalities.  Podcasts, audiobooks, and voice-assistants enable users to listen while commuting, exercising, or multitasking.  However, manually rewriting blog articles as audio scripts is labor-intensive and error-prone.  Large Language Models (LLMs) have shown remarkable ability to understand and produce natural language, yet naïve prompting often leads to hallucinations or overly generic output \cite{Lewis2020RAG}.  
+
+Retrieval-Augmented Generation (RAG) mitigates these issues by grounding LLM responses in a searchable knowledge base \cite{Gao2022RAGSurvey}.  When combined with a \textbf{multi-agent orchestration} framework, RAG can decompose a complex transformation task into well-defined subtasks---extracting salient ideas, drafting a conversational script, and adding directorial cues---while keeping each step anchored to the original text.  
+
+This work proposes a full-stack system that (i) ingests a blog URL, raw text, or markdown, (ii) builds a ChromaDB vector store of semantically meaningful chunks, (iii) runs four specialised RAG agents---\textit{Script Generator}, \textit{Accuracy Agent}, \textit{Storytelling Agent}, and \textit{Engagement Agent}---orchestrated by a LangGraph state machine to produce a polished two-host podcast dialogue, and (iv) synthesises expressive two-voice speech using Coqui XTTS~v2 with reference-based voice cloning.  The result is a one-click ``blog-to-podcast'' service, served by a FastAPI backend and a Next.js frontend, that can be integrated into learning platforms, news aggregators, or personal knowledge-management tools.
+
+\section{Objectives}
+\label{sec:obj}
+\subsection{General Objective}
+\begin{quote}
+   To develop an automated pipeline that converts any blog article into a high-quality, podcast-ready audio file by leveraging Retrieval-Augmented Generation and AI voice synthesis.
+\end{quote}
+
+\subsection{Specific Objectives}
+\begin{enumerate}[nosep, leftmargin=*]
+  \item Design a robust ingestion and chunking module that extracts clean, semantically coherent text segments from heterogeneous blog sources using \texttt{newspaper3k}, \texttt{httpx}, and a custom paragraph-boundary chunker (800-token chunks, 100-token overlap).
+  \item Build a ChromaDB vector database powered by OpenAI \texttt{text-embedding-3-small} embeddings (via LiteLLM) to enable accurate content retrieval.
+  \item Implement four RAG agents---\textit{Script Generator}, \textit{Accuracy Agent}, \textit{Storytelling Agent}, and \textit{Engagement Agent}---orchestrated by a LangGraph \texttt{StateGraph} to generate a coherent, engaging two-host podcast dialogue.
+  \item Integrate Coqui XTTS~v2 with reference-based voice cloning to synthesise natural, expressive two-voice audio (HOST\_A and HOST\_B) while preserving speaker consistency.
+  \item Define evaluation criteria including (a) content fidelity (BLEU/ROUGE vs.\ human-crafted scripts), (b) audio quality (MOS), and (c) end-to-end latency for future quantitative assessment.
+\end{enumerate}
+
+\section{Methodology}
+\label{sec:method}
+Figure~\ref{fig:architecture} depicts the overall pipeline.  The implementation follows the four-layer model described in the project brief.
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{figures/architecture.pdf}{%
+        \includegraphics[width=0.95\linewidth]{figures/architecture.pdf}%
+    }{%
+        \fbox{\parbox{0.9\linewidth}{\centering\vspace{2cm}\textit{[Figure: architecture.pdf not found]}\vspace{2cm}}}%
+    }
+    \caption{System Architecture -- from blog ingestion to podcast audio output.}
+    \label{fig:architecture}
+\end{figure}
+
+\subsection{Data Ingestion \& Pre-processing}
+\begin{itemize}
+  \item \textbf{Input} -- Blog URL, raw text, or markdown.  URLs are fetched via \texttt{httpx} and parsed primarily with \texttt{newspaper3k} (\texttt{Article}), with \texttt{BeautifulSoup} as a fallback extractor.
+  \item \textbf{Cleaning} -- Custom regex normalisation in 
+  \texttt{parser.py} (\texttt{normalize\_text()}, \texttt{parse\_markdown()}) strips extraneous whitespace, HTML artefacts, and boilerplate.  Markdown input is also supported natively.
+  \item \textbf{Chunking} -- A custom \texttt{chunk\_text()} function splits the cleaned text into overlapping chunks of 800 tokens (overlap 100) by splitting at paragraph boundaries first, falling back to sentence and word boundaries.  Token counting uses \texttt{tiktoken}.
+\end{itemize}
+
+\subsection{Embedding \& Vector Store}
+\begin{itemize}
+  \item \textbf{Embeddings} -- OpenAI \texttt{text-embedding-3-small}, accessed via the \texttt{LiteLLM} abstraction layer, generates dense vectors for each chunk.  The embedding model is configurable through environment variables.
+  \item \textbf{Vector DB} -- ChromaDB (persisted to \texttt{./data/chromadb}) stores the embeddings with accompanying metadata (chunk index, title, source URL).
+\end{itemize}
+
+\subsection{RAG Agent Design}
+All agents share a common ``retriever $\to$ LLM'' pattern (GPT-4o via LiteLLM) but differ in system prompts, temperature settings, and post-processing.  The output format throughout is a two-host dialogue between HOST\_A (main presenter) and HOST\_B (curious co-host).
+
+\subsubsection{Script Generator Agent}
+\begin{description}
+  \item[Goal] Convert the ingested blog content directly into a natural, engaging two-host podcast dialogue (HOST\_A / HOST\_B) with an intro, sectioned body, and closing call-to-action.
+  \item[Retrieval] Calls \texttt{retrieve\_all()} on the ChromaDB collection to provide full RAG context alongside the source text.
+  \item[Model] GPT-4o via LiteLLM (temperature 0.7, max\_tokens 4096).
+\end{description}
+
+\subsubsection{Accuracy Agent}
+\begin{description}
+  \item[Goal] Fact-check the generated script against the original source material.  Correct any misrepresentations, exaggerations, or hallucinated facts while preserving the dialogue format.
+  \item[Retrieval] Retrieves source chunks from the same ChromaDB collection for comparison.
+  \item[Model] GPT-4o via LiteLLM (temperature 0.3) for high-precision verification.
+\end{description}
+
+\subsubsection{Storytelling Agent}
+\begin{description}
+  \item[Goal] Enhance narrative quality and pacing without changing facts.  Inserts prosodic and emotional cues: \texttt{[pause]}, \texttt{[emphasis]}, \texttt{[excited]}, \texttt{[thoughtful]}, \texttt{[serious]}, \texttt{[laughing]}.  Adds analogies, metaphors, and story-arc structure (beginning $\to$ tension $\to$ insight $\to$ resolution).
+  \item[Model] GPT-4o via LiteLLM (temperature 0.6).
+\end{description}
+
+\subsubsection{Engagement Agent}
+\begin{description}
+  \item[Goal] Maximise listener engagement by adding rhetorical questions, direct listener addresses, section hooks, smooth transitions, and ``did you know'' moments.  Ensures a compelling opening hook and strong closing call-to-action.
+  \item[Model] GPT-4o via LiteLLM (temperature 0.6).
+\end{description}
+
+All four agents are orchestrated via a \textbf{LangGraph} \texttt{StateGraph}.  A shared \texttt{GraphState} (\texttt{TypedDict}) carries the evolving script through the pipeline: \texttt{generate\_script} $\to$ \texttt{check\_accuracy} $\to$ \texttt{enhance\_storytelling} $\to$ \texttt{optimize\_engagement} $\to$ END.  Conditional edges handle error propagation gracefully.
+
+\subsection{Voice Synthesis}
+The system uses \textbf{Coqui XTTS~v2} (\texttt{tts\_models/multilingual/multi-dataset/xtts\_v2}) for speech synthesis.  This model supports \textbf{reference-based voice cloning}: each host is assigned a reference WAV file (\texttt{voices/host\_a.wav} for ``Alex'' and \texttt{voices/host\_b.wav} for ``Jordan''), enabling consistent and distinctive voices across the dialogue.
+
+Before synthesis, a \texttt{dialogue\_parser} splits the final script into per-speaker segments, extracting cue markers (\texttt{[pause]}, \texttt{[emphasis]}, \texttt{[excited]}, etc.) as metadata.  Each segment is synthesised individually and saved as a WAV file.
+
+\textbf{Audio post-processing} (via \texttt{pydub}) applies volume normalisation, silence trimming ($-40$~dBFS threshold), and optional noise reduction (\texttt{noisereduce}).  The \texttt{assembler} merges all segments into a final podcast file, inserting 400\,ms pauses between different speakers, 800\,ms pauses for \texttt{[pause]} cues, and optional intro/outro music.
+
+Output audio is exported as MP3 (192\,kbps) or WAV and stored on the local filesystem (\texttt{./output/audio/}).
+
+\subsection{API Layer}
+A lightweight FastAPI service (\texttt{api/main.py}) exposes endpoints under the \texttt{/api/v1/} prefix:
+
+\begin{description}
+  \item[\texttt{POST /api/v1/upload-blog}] Accepts a blog URL, raw text, or markdown; triggers ingestion and ChromaDB indexing; returns a job ID.
+  \item[\texttt{POST /api/v1/generate-script}] Generates the two-host podcast script for a previously ingested blog (by job ID).
+  \item[\texttt{POST /api/v1/generate-audio}] Synthesises audio from the generated script.
+  \item[\texttt{POST /api/v1/generate-podcast}] Full pipeline (ingest $\to$ script $\to$ audio) in a single call, executed as a background task.
+  \item[\texttt{GET /api/v1/job/\{job\_id\}}] Returns job status and progress.
+  \item[\texttt{GET /api/v1/download/\{job\_id\}}] Streams the generated audio file.
+  \item[\texttt{GET /health}] Health-check endpoint at the root level.
+\end{description}
+
+Job state is currently tracked in an in-memory Python dictionary (with Redis or a database recommended for production).  The application is run directly via \texttt{uvicorn}.
+
+\subsection{Testing Procedure}
+\begin{enumerate}
+  \item \textbf{Unit Tests} -- PyTest suites with mocked external dependencies cover all major modules:
+    \begin{itemize}[nosep]
+      \item \texttt{test\_ingestion.py} -- text normalisation, markdown parsing, sentence segmentation, chunk creation.
+      \item \texttt{test\_rag.py} -- embedding generation (mocked LiteLLM), ChromaDB add/retrieve operations.
+      \item \texttt{test\_agents.py} -- each of the four agents individually and the full LangGraph pipeline (mocked LiteLLM calls).
+      \item \texttt{test\_api.py} -- health endpoint, blog upload (text \& markdown input), error responses (400, 404).
+      \item \texttt{test\_tts.py} -- dialogue script parsing, speaker extraction, cue extraction, long-segment splitting.
+    \end{itemize}
+  \item \textbf{Integration \& Human Evaluation (planned)} -- Future work includes end-to-end evaluation on a curated blog corpus measuring content fidelity (BLEU/ROUGE), audio quality (MOS/PESQ), and end-to-end latency, as well as human evaluation of script naturalness and audio quality.
+\end{enumerate}
+
+\section{System Design / Architecture}
+Figure~\ref{fig:flow} details data flow and component interaction.
+
+\begin{figure}[H]
+    \centering
+    \IfFileExists{figures/dataflow.pdf}{%
+        \includegraphics[width=0.96\linewidth]{figures/dataflow.pdf}%
+    }{%
+        \fbox{\parbox{0.9\linewidth}{\centering\vspace{2cm}\textit{[Figure: dataflow.pdf not found]}\vspace{2cm}}}%
+    }
+    \caption{Data Flow -- from blog URL to podcast file.}
+    \label{fig:flow}
+\end{figure}
+
+\begin{itemize}
+  \item \textbf{Frontend} -- A \textbf{Next.js} (React, TypeScript) single-page application providing a blog input form (URL, raw text, or markdown), a real-time progress tracker with job polling, a script preview panel, and a built-in audio player.
+  \item \textbf{Backend Services}
+    \begin{enumerate}[label=\alph*)]
+      \item \textit{Ingestion Service} -- Scrapes (\texttt{httpx} + \texttt{newspaper3k}) and cleans input.
+      \item \textit{Embedding Service} -- Generates embeddings (OpenAI via LiteLLM) and stores them in ChromaDB.
+      \item \textit{RAG Orchestrator} -- Runs the four agents via a LangGraph \texttt{StateGraph}.
+      \item \textit{TTS Service} -- Synthesises two-voice audio with Coqui XTTS~v2.
+      \item \textit{Post-processing \& Assembly} -- Normalises, trims, and merges audio segments into the final podcast file.
+    \end{enumerate}
+  \item \textbf{Job Management} -- In-memory Python dictionary (with Redis or a database recommended for production scalability).
+\end{itemize}
+
+The frontend communicates with the backend via HTTP/REST (FastAPI).  Asynchronous pipeline steps are handled by FastAPI \texttt{BackgroundTasks}.
+
+\section{Evaluation Plan (Optional -- can be omitted in the final paper)}
+\begin{table}[H]
+\centering
+\begin{tabular}{lc}
+\toprule
+\textbf{Metric} & \textbf{Target}\\
+\midrule
+Content Fidelity (BLEU)      & $\ge 0.45$ \\
+Script Naturalness (MOS)    & $\ge 4.0$  \\
+Audio Clarity (PESQ)         & $\ge 3.5$  \\
+End-to-End Latency          & $\le 8$\,s  \\
+Hallucination Rate          & $\le 2\%$ \\
+\bottomrule
+\end{tabular}
+\caption{Planned evaluation metrics and target values (evaluation pending).}
+\label{tab:evaluation}
+\end{table}
+
+\section{Conclusion}
+The proposed system demonstrates that a \textbf{RAG-based multi-agent architecture}---comprising a Script Generator, Accuracy Agent, Storytelling Agent, and Engagement Agent orchestrated by a LangGraph state machine---can reliably translate written blog content into engaging two-host podcast dialogues and high-quality synthetic speech.  By grounding each generation step in a ChromaDB vector store, we mitigate hallucinations and preserve factual accuracy.  The Storytelling Agent injects prosodic and emotional cues (\texttt{[pause]}, \texttt{[emphasis]}, \texttt{[excited]}, etc.) that are consumed by the Coqui XTTS~v2 voice-cloning engine to produce natural-sounding, speaker-consistent audio for two distinct hosts.  The modular design---with a FastAPI backend, Next.js frontend, and configurable LLM/embedding providers via LiteLLM---enables future extensions such as additional speaker voices, multimodal input, or speaker-style personalisation.  This work contributes a pipeline that bridges the gap between knowledge bases and audio media, opening new avenues for accessibility-focused AI applications.
+
+% ---------------------------------------------------------------
+%  REFERENCES (IEEE style)
+% ---------------------------------------------------------------
+\printbibliography[heading=section]
+
+\end{document}

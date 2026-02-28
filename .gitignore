@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.venv/
+venv/
+
+# Data & Output (runtime artifacts)
+data/
+output/
+voices/*.wav
+voices/*.mp3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+# Models (large files)
+*.pt
+*.pth
+*.bin
+*.onnx
+
+# uv
+uv.lock
+
+# Testing / Linting caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Streamlit secrets (config.toml is tracked; secrets.toml has credentials)
+.streamlit/secrets.toml

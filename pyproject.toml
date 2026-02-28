@@ -1,0 +1,68 @@
+[project]
+name = "podcastman"
+version = "0.1.0"
+description = "Blog-to-Podcast Conversion System with AI Voice Generation Using RAG Agents"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # LLM
+    "litellm>=1.40.0",
+    "langchain-core>=0.2.0",
+    "langchain-community>=0.2.0",
+    "langgraph>=0.2.0",
+    # Embeddings & Vector DB
+    "chromadb>=0.5.0",
+    # Content Ingestion
+    "beautifulsoup4>=4.12.0",
+    "newspaper3k>=0.2.8",
+    "httpx>=0.27.0",
+    "lxml>=5.0.0",
+    "lxml_html_clean>=0.1.0",
+    # TTS
+    "TTS>=0.22.0",
+    "transformers>=4.33.0,<4.42.0", # TTS 0.22.0 requires BeamSearchScorer (removed in transformers 4.42+)
+    "torch>=2.0.0,<2.6.0", # Pin torch <2.6 to avoid torchcodec requirement
+    "torchaudio>=2.0.0,<2.6.0", # Pin torchaudio <2.6 to match torch
+    "soundfile>=0.12.1", # Audio I/O backend for TTS (alternative to torchcodec)
+    # Audio Processing
+    "pydub>=0.25.1",
+    "noisereduce>=3.0.0",
+    "scipy>=1.12.0",
+    "numpy>=1.26.0",
+    # API
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
+    # Config
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    # Utils
+    "tiktoken>=0.7.0",
+    "nltk>=3.8.0",
+    # Frontend (Streamlit)
+    "streamlit>=1.35.0",
+    "requests>=2.32.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "ruff>=0.5.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["config", "ingestion", "rag", "agents", "tts", "audio", "api", "models", "utils"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
