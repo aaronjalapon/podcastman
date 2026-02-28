@@ -56,17 +56,6 @@ def _backend_is_running() -> bool:
         return False
 
 
-def _check_tts_available() -> bool:
-    """Query the backend /health endpoint for TTS availability."""
-    try:
-        resp = requests.get(_HEALTH_URL, timeout=3)
-        if resp.status_code == 200:
-            return resp.json().get("tts_available", False)
-    except Exception:
-        pass
-    return False
-
-
 def _ensure_backend() -> None:
     """Launch uvicorn as a subprocess if the backend isn't already running."""
     if _backend_is_running():
@@ -89,10 +78,6 @@ def _ensure_backend() -> None:
 
 
 _ensure_backend()
-
-# Cache TTS availability so we don't re-check on every rerun
-if "tts_available" not in st.session_state:
-    st.session_state["tts_available"] = _check_tts_available()
 
 import api as backend  # noqa: E402  (local api.py)
 
@@ -212,26 +197,11 @@ def render_input_view() -> None:
         "Paste a URL, raw text, or Markdown — AI agents generate a two-voice dialogue."
     )
 
-    tts_ok: bool = st.session_state.get("tts_available", False)
-
-    if not tts_ok:
-        st.info(
-            "💡 **Audio synthesis is unavailable** on this deployment "
-            "(TTS model requires more memory than available). "
-            "You can still generate and review scripts. "
-            "For full audio, deploy locally or on a higher-resource host."
-        )
-
-    # Only offer full pipeline when TTS is available
-    if tts_ok:
-        use_full = st.checkbox(
-            "Full pipeline (auto-run all steps)",
-            value=st.session_state["use_full_pipeline"],
-            key="use_full_pipeline",
-        )
-    else:
-        use_full = False
-        st.session_state["use_full_pipeline"] = False
+    use_full = st.checkbox(
+        "Full pipeline (auto-run all steps)",
+        value=st.session_state["use_full_pipeline"],
+        key="use_full_pipeline",
+    )
 
     tab_url, tab_text, tab_md = st.tabs(["🔗 URL", "📝 Text", "📄 Markdown"])
 
@@ -288,7 +258,7 @@ def render_input_view() -> None:
         is_valid = True
 
     if st.button(
-        "🔊 Generate Script" if not use_full else "🎙️ Generate Podcast (Full Pipeline)",
+        "🎙️ Generate Podcast" if not use_full else "🎙️ Generate Podcast (Full Pipeline)",
         disabled=not is_valid,
         type="primary",
     ):
@@ -336,19 +306,7 @@ def render_processing_view() -> None:
         return
 
     if current_status == "completed":
-        # When TTS was skipped (unavailable), redirect to script view
-        tts_ok = st.session_state.get("tts_available", False)
-        if not tts_ok:
-            # Fetch script for display
-            try:
-                script_data = backend.get_script(job_id)
-                st.session_state["script"] = script_data["script"]
-                st.session_state["segment_count"] = script_data["segment_count"]
-            except Exception:
-                pass
-            st.session_state["step"] = "script"
-        else:
-            st.session_state["step"] = "audio"
+        st.session_state["step"] = "audio"
         st.rerun()
         return
 
@@ -439,15 +397,10 @@ def render_script_view() -> None:
 
     col_audio, col_dl, col_reset = st.columns([2, 2, 1])
     with col_audio:
-        tts_ok = st.session_state.get("tts_available", False)
-        if tts_ok:
-            if st.button("🔊 Generate Audio", type="primary"):
-                with st.spinner("Starting audio synthesis…"):
-                    handle_generate_audio()
-                st.rerun()
-        else:
-            st.button("🔊 Generate Audio", disabled=True, help="TTS unavailable on this deployment")
-            st.caption("Deploy locally for audio generation")
+        if st.button("🔊 Generate Audio", type="primary"):
+            with st.spinner("Starting audio synthesis…"):
+                handle_generate_audio()
+            st.rerun()
     with col_dl:
         st.download_button(
             "⬇️ Download Script (.txt)",

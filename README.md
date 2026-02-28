@@ -33,25 +33,13 @@ uv run uvicorn api.main:app --reload
    LLM_API_KEY = "sk-..."
    EMBEDDING_MODEL = "text-embedding-3-small"
    EMBEDDING_API_KEY = "sk-..."
-   DISABLE_TTS = "true"
    ```
 
 4. Deploy. The app auto-starts the FastAPI backend as a subprocess.
 
-**Python version:** The project requires Python 3.11 (pinned via `.python-version`).
-Streamlit Cloud reads this file automatically to select the correct interpreter.
-
-**Resource limits & TTS:**
-Coqui XTTS v2 needs ~2 GB of RAM just for the model. Streamlit Community
-Cloud's free tier provides ~1 GB, so audio synthesis will not work there.
-The app auto-detects this and gracefully disables audio — you can still
-generate and review scripts. Set `DISABLE_TTS = "true"` in your secrets
-to skip TTS entirely and avoid the failed model-load attempt.
-
-For full audio generation, deploy locally or on a VPS/cloud VM with ≥4 GB RAM:
-```bash
-streamlit run frontend/app.py
-```
+**Note:** Streamlit Community Cloud has resource limits. The Coqui XTTS v2 model
+requires ~1.8 GB of memory. If you hit memory limits, consider deploying on a
+VPS or cloud VM instead (`streamlit run frontend/app.py`).
 
 ### Voice Customization
 

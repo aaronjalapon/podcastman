@@ -29,8 +29,7 @@ from ingestion.scraper import scrape_url
 from models.data import BlogContent, JobStatus
 from rag.vectorstore import add_chunks
 from tts.dialogue_parser import parse_dialogue
-from tts.engine import cleanup_run, is_tts_available, synthesize_all
-from models.data import TTSUnavailableError
+from tts.engine import cleanup_run, synthesize_all
 from utils.helpers import get_logger, write_text
 
 log = get_logger(__name__)
@@ -137,13 +136,6 @@ async def generate_audio(request: AudioRequest, background_tasks: BackgroundTask
 
     Audio synthesis runs as a background task since it's slow.
     """
-    if not is_tts_available():
-        raise HTTPException(
-            503,
-            "TTS is unavailable on this deployment. "
-            "Use script-only mode or deploy locally for audio generation.",
-        )
-
     job = _jobs.get(request.job_id)
     if not job or "segments" not in job:
         raise HTTPException(404, "Job not found or script not generated")
@@ -168,7 +160,6 @@ async def generate_podcast(
     """Full end-to-end pipeline: blog → podcast audio.
 
     Runs the entire pipeline in the background. Poll /job/{job_id} for status.
-    If TTS is unavailable, only script generation runs; audio is skipped.
     """
     job_id = str(uuid.uuid4())
     _jobs[job_id] = {"status": JobStatus.INGESTING, "progress": 0.0}
@@ -379,20 +370,7 @@ def _full_pipeline(job_id: str, input_data: FullPipelineRequest) -> None:
             "pipeline_result": result,
         })
 
-        # Step 3: Synthesize audio (skip if TTS unavailable)
-        if not is_tts_available():
-            log.info(
-                "TTS unavailable — skipping audio for job %s. Script is ready.",
-                job_id,
-            )
-            _jobs[job_id].update({
-                "status": JobStatus.COMPLETED,
-                "progress": 1.0,
-                "message": "Script generated (audio unavailable on this deployment)",
-                "tts_skipped": True,
-            })
-            return
-
+        # Step 3: Synthesize audio
         _jobs[job_id].update({"status": JobStatus.SYNTHESIZING, "progress": 0.5})
 
         def _on_segment(done: int, total: int) -> None:

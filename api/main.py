@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api.routes import router
 from config.settings import settings
-from tts.engine import cleanup_stale_runs, is_tts_available
+from tts.engine import cleanup_stale_runs
 from utils.helpers import get_logger
 
 log = get_logger(__name__)
@@ -68,11 +68,7 @@ app.include_router(router, prefix="/api/v1", tags=["pipeline"])
 # Health check
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "version": "0.1.0",
-        "tts_available": is_tts_available(),
-    }
+    return {"status": "ok", "version": "0.1.0"}
 
 
 if __name__ == "__main__":
