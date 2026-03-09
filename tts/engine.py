@@ -1,75 +1,97 @@
-"""Coqui XTTS v2 voice synthesis engine."""
+"""Google Cloud TTS voice synthesis engine."""
 
 from __future__ import annotations
 
+import os
 import shutil
 import time
 import uuid
-import warnings
 from pathlib import Path
+from typing import Callable
 
-import numpy as np
-import scipy.io.wavfile as wavfile
+from google.cloud import texttospeech
 
 from config.settings import settings
-from models.data import Speaker, SpeakerSegment
+from models.data import SpeakerSegment
 from tts.voice_config import get_voice
 from utils.helpers import get_logger
-
-# Suppress PyTorch FutureWarnings about weights_only (TTS 0.22.0 uses trusted models)
-warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
-warnings.filterwarnings("ignore", category=FutureWarning, module="TTS")
 
 log = get_logger(__name__)
 
 # Maximum age (seconds) before an orphaned run directory is considered stale
 _MAX_RUN_AGE_SECONDS = 60 * 60  # 1 hour
 
-# Lazy-loaded TTS model
-_tts_model = None
+# Lazy-initialised client
+_tts_client: texttospeech.TextToSpeechClient | None = None
 
 
-def _get_model():
-    """Lazy-load the Coqui TTS model (heavy, ~1.8 GB)."""
-    global _tts_model
-    if _tts_model is None:
-        log.info("Loading TTS model: %s (this may take a moment)...", settings.coqui_model_name)
-        
-        # Add safe globals for PyTorch 2.6+ security
-        # Coqui TTS is a trusted source, so we allowlist its config/model classes
-        import torch
-        safe_globals_list = []
-        try:
-            from TTS.tts.configs.xtts_config import XttsConfig
-            safe_globals_list.append(XttsConfig)
-        except ImportError:
-            pass
-        try:
-            from TTS.tts.models.xtts import XttsAudioConfig, XttsArgs
-            safe_globals_list.extend([XttsAudioConfig, XttsArgs])
-        except ImportError:
-            pass
-        try:
-            from TTS.config.shared_configs import BaseDatasetConfig
-            safe_globals_list.append(BaseDatasetConfig)
-        except ImportError:
-            pass
-        
-        if safe_globals_list:
-            torch.serialization.add_safe_globals(safe_globals_list)
-        
-        from TTS.api import TTS
+def _get_client() -> texttospeech.TextToSpeechClient:
+    """Return a (cached) Google Cloud TTS client."""
+    global _tts_client
+    if _tts_client is None:
+        # If a path is provided (local/dev), use it. In Cloud Run, ADC is preferred.
+        if settings.google_application_credentials:
+            os.environ.setdefault(
+                "GOOGLE_APPLICATION_CREDENTIALS",
+                settings.google_application_credentials,
+            )
+            log.info("Initialising TTS client using GOOGLE_APPLICATION_CREDENTIALS path")
+        else:
+            log.info("Initialising TTS client using Application Default Credentials")
+        _tts_client = texttospeech.TextToSpeechClient()
+        log.info("Google Cloud TTS client initialised")
+    return _tts_client
 
-        _tts_model = TTS(model_name=settings.coqui_model_name)
-        log.info("TTS model loaded successfully")
-    return _tts_model
+
+# ── SSML builder ─────────────────────────────────────────────────────────────
+
+_SSML_CUE_MAP: dict[str, tuple[str, str]] = {
+    "pause": ('<break time="500ms"/>', ""),
+    "emphasis": ('<emphasis level="strong">', "</emphasis>"),
+    "excited": ('<prosody rate="fast" pitch="+2st">', "</prosody>"),
+    "thoughtful": ('<prosody rate="slow">', "</prosody>"),
+    "serious": ('<prosody rate="slow" pitch="-1st">', "</prosody>"),
+    "laughing": ('<prosody pitch="+1st">', "</prosody>"),
+}
+
+
+def _build_ssml(text: str, cues: list[str]) -> str:
+    """Wrap *text* in an SSML ``<speak>`` element, applying cue markers."""
+    # Escape XML special characters in the text
+    escaped = (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+    prefix_tags: list[str] = []
+    suffix_tags: list[str] = []
+
+    for cue in cues:
+        mapping = _SSML_CUE_MAP.get(cue.lower())
+        if mapping is None:
+            continue
+        opening, closing = mapping
+        if closing:
+            prefix_tags.append(opening)
+            suffix_tags.insert(0, closing)
+        else:
+            # Self-closing tag (e.g. <break/>) — prepend before text
+            prefix_tags.append(opening)
+
+    inner = "".join(prefix_tags) + escaped + "".join(suffix_tags)
+    return f"<speak>{inner}</speak>"
+
+
+# ── Synthesis ────────────────────────────────────────────────────────────────
 
 
 def synthesize_segment(
     segment: SpeakerSegment,
     output_dir: Path | None = None,
 ) -> Path:
-    """Synthesize a single speaker segment to a WAV file.
+    """Synthesize a single speaker segment to a WAV file via Google Cloud TTS.
 
     Args:
         segment: The speaker segment to synthesize.
@@ -82,34 +104,41 @@ def synthesize_segment(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    voice = get_voice(segment.speaker)
+    voice_cfg = get_voice(segment.speaker)
     output_path = output_dir / f"segment_{segment.index:04d}_{segment.speaker.value}.wav"
 
     log.info(
-        "Synthesizing segment %d (%s, %d chars): %.50s...",
+        "Synthesizing segment %d (%s / %s, %d chars): %.50s...",
         segment.index,
-        voice.name,
+        voice_cfg.name,
+        voice_cfg.voice_name,
         len(segment.text),
         segment.text,
     )
 
-    tts = _get_model()
+    client = _get_client()
 
-    # XTTS v2 requires speaker_wav for voice cloning
-    if not voice.reference_exists:
-        raise FileNotFoundError(
-            f"Voice reference audio not found for {voice.name} at {voice.reference_audio}\n"
-            f"Please add a 6-10 second WAV file of clear speech to: {voice.reference_audio}\n"
-            f"XTTS v2 requires reference audio for voice cloning."
-        )
+    ssml = _build_ssml(segment.text, segment.cues)
 
-    # Synthesize with voice cloning from reference audio
-    tts.tts_to_file(
-        text=segment.text,
-        file_path=str(output_path),
-        speaker_wav=str(voice.reference_audio),
-        language=voice.language,
+    synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
+
+    voice_params = texttospeech.VoiceSelectionParams(
+        language_code=voice_cfg.language_code,
+        name=voice_cfg.voice_name,
     )
+
+    audio_config = texttospeech.AudioConfig(
+        audio_encoding=texttospeech.AudioEncoding.LINEAR16,
+        speaking_rate=voice_cfg.speed,
+    )
+
+    response = client.synthesize_speech(
+        input=synthesis_input,
+        voice=voice_params,
+        audio_config=audio_config,
+    )
+
+    output_path.write_bytes(response.audio_content)
 
     log.info("Segment %d saved to %s", segment.index, output_path)
     return output_path
@@ -118,7 +147,7 @@ def synthesize_segment(
 def synthesize_all(
     segments: list[SpeakerSegment],
     output_dir: Path | None = None,
-    on_segment_done: "Callable[[int, int], None] | None" = None,
+    on_segment_done: Callable[[int, int], None] | None = None,
     run_id: str | None = None,
 ) -> tuple[list[Path], Path]:
     """Synthesize all segments into an isolated per-run subdirectory.
@@ -158,6 +187,9 @@ def synthesize_all(
     return paths, run_dir
 
 
+# ── Cleanup helpers ──────────────────────────────────────────────────────────
+
+
 def cleanup_run(run_dir: Path) -> None:
     """Remove a run's temporary segment directory after assembly completes."""
     run_dir = Path(run_dir)
@@ -189,22 +221,3 @@ def cleanup_stale_runs(base_dir: Path | None = None) -> None:
                 age / 60,
                 run_dir,
             )
-
-
-def generate_silence(duration_ms: int, sample_rate: int = 22050) -> Path:
-    """Generate a silent WAV file of the specified duration.
-
-    Used for inserting pauses between speaker turns.
-    """
-    output_dir = Path(settings.segments_path)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    output_path = output_dir / f"silence_{duration_ms}ms.wav"
-    if output_path.exists():
-        return output_path
-
-    num_samples = int(sample_rate * duration_ms / 1000)
-    silence = np.zeros(num_samples, dtype=np.int16)
-    wavfile.write(str(output_path), sample_rate, silence)
-
-    return output_path

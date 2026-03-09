@@ -21,7 +21,11 @@ async def lifespan(app: FastAPI):
     """Application startup/shutdown lifecycle."""
     log.info("podcastman starting up")
     log.info("LLM model: %s", settings.llm_model)
-    log.info("TTS model: %s", settings.coqui_model_name)
+    log.info(
+        "TTS: Google Cloud TTS (%s / %s)",
+        settings.google_tts_voice_a,
+        settings.google_tts_voice_b,
+    )
     log.info("Output dir: %s", settings.output_dir)
 
     # Ensure output directories exist

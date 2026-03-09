@@ -22,11 +22,11 @@ class Settings(BaseSettings):
     # ── ChromaDB ─────────────────────────────────────────────────────────
     chroma_persist_dir: str = "./data/chromadb"
 
-    # ── Coqui TTS ────────────────────────────────────────────────────────
-    coqui_model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2"
-    voice_a_reference: str = "./voices/host_a.wav"
-    voice_b_reference: str = "./voices/host_b.wav"
-    tts_language: str = "en"
+    # ── Google Cloud TTS ─────────────────────────────────────────────────
+    google_tts_voice_a: str = "en-US-Standard-J"
+    google_tts_voice_b: str = "en-US-Standard-H"
+    google_tts_language_code: str = "en-US"
+    google_application_credentials: str = ""
 
     # ── Audio ────────────────────────────────────────────────────────────
     output_dir: str = "./output"

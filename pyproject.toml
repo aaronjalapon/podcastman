@@ -19,11 +19,7 @@ dependencies = [
     "lxml>=5.0.0",
     "lxml_html_clean>=0.1.0",
     # TTS
-    "TTS>=0.22.0",
-    "transformers>=4.33.0,<4.42.0", # TTS 0.22.0 requires BeamSearchScorer (removed in transformers 4.42+)
-    "torch>=2.0.0,<2.6.0", # Pin torch <2.6 to avoid torchcodec requirement
-    "torchaudio>=2.0.0,<2.6.0", # Pin torchaudio <2.6 to match torch
-    "soundfile>=0.12.1", # Audio I/O backend for TTS (alternative to torchcodec)
+    "google-cloud-texttospeech>=2.16.0",
     # Audio Processing
     "pydub>=0.25.1",
     "noisereduce>=3.0.0",

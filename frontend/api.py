@@ -1,9 +1,26 @@
 """HTTP client for the podcastman FastAPI backend."""
 from __future__ import annotations
 
+import os
+
 import requests
 
-API_BASE = "http://localhost:8000/api/v1"
+
+def _resolve_api_base() -> str:
+    """Resolve backend API base URL from environment for cloud deployment.
+
+    `PODCASTMAN_API_BASE` accepts either:
+    - full API URL (e.g. https://api-xyz.run.app/api/v1)
+    - service root URL (e.g. https://api-xyz.run.app)
+    """
+    base = os.getenv("PODCASTMAN_API_BASE", "http://localhost:8000")
+    base = base.rstrip("/")
+    if not base.endswith("/api/v1"):
+        base = f"{base}/api/v1"
+    return base
+
+
+API_BASE = _resolve_api_base()
 
 
 def _post(path: str, payload: dict) -> dict:

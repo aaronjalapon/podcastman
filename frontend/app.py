@@ -408,7 +408,7 @@ def main() -> None:
         """
         <div style="border-top:1px solid #333;padding-top:.75rem;margin-top:3rem;
                     text-align:center;color:#666;font-size:.75rem">
-            podcastman v0.1.0 — LiteLLM · LangGraph · Coqui XTTS v2 · ChromaDB
+            podcastman v0.1.0 — LiteLLM · LangGraph · Google Cloud TTS · ChromaDB
         </div>
         """,
         unsafe_allow_html=True,

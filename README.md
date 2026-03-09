@@ -1,6 +1,6 @@
 # Blog-to-Podcast Conversion System (podcastman)
 
-AI-powered system that converts blog posts into natural two-voice podcast episodes using RAG agents and Coqui XTTS v2.
+AI-powered system that converts blog posts into natural two-voice podcast episodes using RAG agents and Google Cloud TTS.
 
 ## Quick Start
 
@@ -19,13 +19,78 @@ uv run uvicorn api.main:app --reload
 uv run python -m podcastman.cli --url "https://example.com/blog-post"
 ```
 
+## Deploy To Google Cloud Run (MVP)
+
+This repository includes an MVP Cloud Run deployment path that deploys:
+- Backend API service (FastAPI)
+- Frontend service (Streamlit)
+
+### 1. Prerequisites
+
+- `gcloud` CLI installed and authenticated
+- Billing-enabled GCP project
+- Roles to deploy Cloud Run, build images, and create Artifact Registry/Secret Manager resources
+
+### 2. Create Secrets (once)
+
+```bash
+export PROJECT_ID="your-project-id"
+gcloud config set project "$PROJECT_ID"
+
+printf '%s' 'your-llm-api-key' | gcloud secrets create LLM_API_KEY --data-file=-
+printf '%s' 'your-embedding-api-key' | gcloud secrets create EMBEDDING_API_KEY --data-file=-
+```
+
+If the secrets already exist, add new versions instead:
+
+```bash
+printf '%s' 'your-llm-api-key' | gcloud secrets versions add LLM_API_KEY --data-file=-
+printf '%s' 'your-embedding-api-key' | gcloud secrets versions add EMBEDDING_API_KEY --data-file=-
+```
+
+### 3. Deploy Backend + Frontend
+
+```bash
+chmod +x scripts/deploy_cloud_run.sh
+
+export PROJECT_ID="your-project-id"
+export REGION="us-central1"
+
+scripts/deploy_cloud_run.sh
+```
+
+### 4. Grant Google TTS permissions to backend service account
+
+Cloud Run defaults to the Compute Engine default service account unless you set a custom one. Grant TTS access to whichever service account your backend uses:
+
+```bash
+export PROJECT_ID="your-project-id"
+export REGION="us-central1"
+export BACKEND_SERVICE="podcastman-backend"
+export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+
+BACKEND_SA="$(gcloud run services describe "$BACKEND_SERVICE" --region "$REGION" --format='value(spec.template.spec.serviceAccountName)')"
+if [ -z "$BACKEND_SA" ]; then
+  BACKEND_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+fi
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${BACKEND_SA}" \
+  --role="roles/cloudtts.user"
+```
+
+Notes:
+- In Cloud Run, the app uses Application Default Credentials (ADC). You do not need to set `GOOGLE_APPLICATION_CREDENTIALS` there.
+- MVP deployment stores generated files and Chroma data under `/tmp`, which is ephemeral.
+- For production durability, migrate scripts/audio to Cloud Storage and job state to Firestore/Redis/SQL.
+
 ## Architecture
 
 ```
 Blog Input → Content Ingestion → RAG Knowledge Base (ChromaDB)
   → Script Generation Agent → Accuracy Check Agent
   → Storytelling Agent → Engagement Agent
-  → Coqui XTTS v2 Voice Synthesis (2 voices)
+  → Google Cloud TTS Voice Synthesis (2 voices)
   → Audio Post-Processing → Final Podcast MP3
 ```
 
@@ -43,7 +108,7 @@ Blog Input → Content Ingestion → RAG Knowledge Base (ChromaDB)
 - **LLM**: LiteLLM (OpenAI, Anthropic, Ollama — switchable)
 - **Orchestration**: LangChain + LangGraph (multi-agent pipeline)
 - **Vector DB**: ChromaDB
-- **TTS**: Coqui XTTS v2 (two-voice dialogue)
+- **TTS**: Google Cloud TTS (two-voice dialogue)
 - **API**: FastAPI
 - **Audio**: pydub + ffmpeg + noisereduce
 

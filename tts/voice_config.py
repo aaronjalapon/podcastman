@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from config.settings import settings
 from models.data import Speaker
@@ -15,14 +14,10 @@ class VoicePersona:
 
     name: str
     speaker: Speaker
-    reference_audio: Path
-    language: str = "en"
+    voice_name: str
+    language_code: str = "en-US"
     speed: float = 1.0
     description: str = ""
-
-    @property
-    def reference_exists(self) -> bool:
-        return self.reference_audio.exists()
 
 
 # ── Default Personas ─────────────────────────────────────────────────────────
@@ -30,8 +25,8 @@ class VoicePersona:
 HOST_A = VoicePersona(
     name="Mike",
     speaker=Speaker.HOST_A,
-    reference_audio=Path(settings.voice_a_reference),
-    language=settings.tts_language,
+    voice_name=settings.google_tts_voice_a,
+    language_code=settings.google_tts_language_code,
     speed=1.0,
     description="Main presenter, confident and knowledgeable tone",
 )
@@ -39,8 +34,8 @@ HOST_A = VoicePersona(
 HOST_B = VoicePersona(
     name="Sarah",
     speaker=Speaker.HOST_B,
-    reference_audio=Path(settings.voice_b_reference),
-    language=settings.tts_language,
+    voice_name=settings.google_tts_voice_b,
+    language_code=settings.google_tts_language_code,
     speed=1.0,
     description="Co-host, curious and enthusiastic tone",
 )
