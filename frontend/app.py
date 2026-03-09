@@ -16,7 +16,9 @@ import streamlit as st
 
 # Make the project root importable so `frontend/api.py` can be found
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(1, str(Path(__file__).resolve().parent.parent))
 import api as backend  # noqa: E402  (local api.py)
+from config.frontend_design import frontend_design  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -33,6 +35,131 @@ PIPELINE_STAGES: list[tuple[str, str]] = [
 
 STAGE_KEYS = [s[0] for s in PIPELINE_STAGES]
 POLL_INTERVAL = 3  # seconds between status polls
+
+
+# ---------------------------------------------------------------------------
+# Presentation helpers
+# ---------------------------------------------------------------------------
+
+
+def icon_class(name: str) -> str:
+    return frontend_design.icons.get(name, "fa-solid fa-circle")
+
+
+def icon_html(name: str) -> str:
+    return f"<i class='{icon_class(name)}' aria-hidden='true'></i>"
+
+
+def icon_text(name: str, label: str) -> str:
+    return f"{icon_html(name)} <span>{label}</span>"
+
+
+def inject_design_css() -> None:
+    theme = frontend_design.theme
+    st.markdown(
+        f"""
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap');
+            @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css');
+
+            :root {{
+                --pm-primary: {theme.primary_color};
+                --pm-accent: {theme.accent_color};
+                --pm-bg-a: {theme.background_start};
+                --pm-bg-b: {theme.background_end};
+                --pm-surface: {theme.surface_color};
+                --pm-text: {theme.text_color};
+                --pm-muted: {theme.muted_text_color};
+                --pm-border: {theme.border_color};
+                --pm-font: {theme.font_family};
+                --pm-mono: {theme.mono_font_family};
+            }}
+
+            .stApp {{
+                background: radial-gradient(circle at 0% 0%, var(--pm-bg-a) 0%, var(--pm-bg-b) 100%);
+                color: var(--pm-text);
+                font-family: var(--pm-font);
+            }}
+
+            [data-testid="stMarkdownContainer"] p,
+            [data-testid="stMarkdownContainer"] li,
+            [data-testid="stCaptionContainer"] {{
+                color: var(--pm-text);
+                font-family: var(--pm-font);
+            }}
+
+            .pm-card {{
+                background: color-mix(in srgb, var(--pm-surface) 93%, white 7%);
+                border: 1px solid var(--pm-border);
+                border-radius: 16px;
+                padding: 1rem 1.25rem;
+            }}
+
+            .pm-header {{
+                border: 1px solid var(--pm-border);
+                border-radius: 16px;
+                padding: 1rem 1.25rem;
+                background: color-mix(in srgb, var(--pm-surface) 90%, var(--pm-bg-a) 10%);
+                margin-bottom: 1.5rem;
+            }}
+
+            .pm-title {{
+                font-size: 1.35rem;
+                font-weight: 700;
+                letter-spacing: 0.01em;
+                margin-left: 0.45rem;
+            }}
+
+            .pm-tagline {{
+                color: var(--pm-muted);
+                font-size: 0.85rem;
+                margin-left: 0.5rem;
+            }}
+
+            .pm-icon-label i {{
+                color: var(--pm-primary);
+                margin-right: 0.45rem;
+                width: 1rem;
+                text-align: center;
+            }}
+
+            .pm-stage-current i {{
+                color: var(--pm-primary);
+            }}
+
+            .pm-stage-done i {{
+                color: var(--pm-accent);
+            }}
+
+            .pm-stage-pending i {{
+                color: var(--pm-muted);
+            }}
+
+            .pm-footer {{
+                border-top: 1px solid var(--pm-border);
+                padding-top: 0.75rem;
+                margin-top: 3rem;
+                text-align: center;
+                color: var(--pm-muted);
+                font-size: 0.75rem;
+                font-family: var(--pm-mono);
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def icon_heading(icon_name: str, label: str, level: int = 3) -> None:
+    size = "1.35rem" if level == 2 else "1.1rem"
+    st.markdown(
+        (
+            f"<h{level} class='pm-icon-label' style='font-size:{size};margin:0.2rem 0 0.7rem 0;'>"
+            f"{icon_html(icon_name)} {label}"
+            f"</h{level}>"
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -116,12 +243,13 @@ def handle_generate_audio() -> None:
 # ---------------------------------------------------------------------------
 
 def render_header() -> None:
+    ui = frontend_design.ui
     st.markdown(
-        """
-        <div style="border-bottom:1px solid #333;padding-bottom:1rem;margin-bottom:1.5rem">
-            <span style="font-size:2rem">🎙️</span>
-            <span style="font-size:1.4rem;font-weight:700;margin-left:.5rem">podcastman</span>
-            <span style="color:#888;font-size:.85rem;margin-left:.5rem">Blog → Podcast with AI</span>
+        f"""
+        <div class="pm-header">
+            <span style="font-size:1.45rem;color:var(--pm-primary)">{icon_html("brand")}</span>
+            <span class="pm-title">{ui.app_name}</span>
+            <span class="pm-tagline">{ui.tagline}</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -140,7 +268,7 @@ def render_input_view() -> None:
         key="use_full_pipeline",
     )
 
-    tab_url, tab_text, tab_md = st.tabs(["🔗 URL", "📝 Text", "📄 Markdown"])
+    tab_url, tab_text, tab_md = st.tabs(["URL", "Text", "Markdown"])
 
     mode = None
     content_value = ""
@@ -194,8 +322,14 @@ def render_input_view() -> None:
     elif mode in ("text", "markdown") and len(content_value) >= 50:
         is_valid = True
 
+    generate_label = "Generate Podcast" if not use_full else "Generate Podcast (Full Pipeline)"
+
+    st.markdown(
+        f"<div class='pm-icon-label'>{icon_text('generate', generate_label)}</div>",
+        unsafe_allow_html=True,
+    )
     if st.button(
-        "🎙️ Generate Podcast" if not use_full else "🎙️ Generate Podcast (Full Pipeline)",
+        generate_label,
         disabled=not is_valid,
         type="primary",
     ):
@@ -215,7 +349,7 @@ def render_input_view() -> None:
 def render_processing_view() -> None:
     job_id: str = st.session_state["job_id"]
 
-    st.subheader("⚙️ Pipeline Running…")
+    icon_heading("processing", "Pipeline Running")
     if job_id:
         st.caption(f"Job ID: `{job_id[:8]}…`")
 
@@ -266,13 +400,16 @@ def render_processing_view() -> None:
     stage_lines = []
     for i, (key, label) in enumerate(PIPELINE_STAGES):
         if i < current_index or current_status == "completed":
-            marker = "✅"
+            css_class = "pm-stage-done"
+            marker = icon_html("done")
         elif i == current_index:
-            marker = "🔵"
+            css_class = "pm-stage-current"
+            marker = icon_html("current")
         else:
-            marker = "⚪"
-        stage_lines.append(f"{marker} {label}")
-    st.markdown("\n\n".join(stage_lines))
+            css_class = "pm-stage-pending"
+            marker = icon_html("pending")
+        stage_lines.append(f"<div class='{css_class}'>{marker} <span>{label}</span></div>")
+    st.markdown("".join(stage_lines), unsafe_allow_html=True)
 
     if message:
         st.caption(message)
@@ -293,7 +430,7 @@ def render_script_view() -> None:
 
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.subheader("📝 Podcast Script")
+        icon_heading("script", "Podcast Script")
     with col2:
         st.metric("Segments", segment_count)
 
@@ -302,11 +439,11 @@ def render_script_view() -> None:
     for line in lines:
         if line.startswith("HOST_A:"):
             text = line[len("HOST_A:"):].strip()
-            with st.chat_message("HOST A", avatar="�"):
+            with st.chat_message("HOST A", avatar="A"):
                 st.write(text)
         elif line.startswith("HOST_B:"):
             text = line[len("HOST_B:"):].strip()
-            with st.chat_message("HOST B", avatar="🎧"):
+            with st.chat_message("HOST B", avatar="B"):
                 st.write(text)
         else:
             st.caption(line.strip())
@@ -315,19 +452,31 @@ def render_script_view() -> None:
 
     col_audio, col_dl, col_reset = st.columns([2, 2, 1])
     with col_audio:
-        if st.button("🔊 Generate Audio", type="primary"):
+        st.markdown(
+            f"<div class='pm-icon-label'>{icon_text('audio', 'Generate Audio')}</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Generate Audio", type="primary"):
             with st.spinner("Starting audio synthesis…"):
                 handle_generate_audio()
             st.rerun()
     with col_dl:
+        st.markdown(
+            f"<div class='pm-icon-label'>{icon_text('download', 'Download Script')}</div>",
+            unsafe_allow_html=True,
+        )
         st.download_button(
-            "⬇️ Download Script (.txt)",
+            "Download Script (.txt)",
             data=script,
             file_name=f"script_{st.session_state['job_id'][:8]}.txt",
             mime="text/plain",
         )
     with col_reset:
-        if st.button("↩ Start Over"):
+        st.markdown(
+            f"<div class='pm-icon-label'>{icon_text('reset', 'Start Over')}</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Start Over"):
             reset_state()
             st.rerun()
 
@@ -335,7 +484,11 @@ def render_script_view() -> None:
 def render_audio_view() -> None:
     job_id: str = st.session_state["job_id"]
 
-    st.success("🎉 Podcast Ready!")
+    st.success("Podcast Ready")
+    st.markdown(
+        f"<div class='pm-icon-label'>{icon_text('ready', 'Your episode is ready to listen and download.')}</div>",
+        unsafe_allow_html=True,
+    )
 
     # Fetch audio bytes once and cache in session state
     if st.session_state.get("audio_bytes") is None:
@@ -356,15 +509,23 @@ def render_audio_view() -> None:
 
     col_dl, col_reset = st.columns([2, 1])
     with col_dl:
+        st.markdown(
+            f"<div class='pm-icon-label'>{icon_text('download', 'Download MP3')}</div>",
+            unsafe_allow_html=True,
+        )
         st.download_button(
-            "⬇️ Download MP3",
+            "Download MP3",
             data=audio_bytes,
             file_name=f"podcast_{job_id[:8]}.mp3",
             mime="audio/mpeg",
             type="primary",
         )
     with col_reset:
-        if st.button("← Generate Another"):
+        st.markdown(
+            f"<div class='pm-icon-label'>{icon_text('back', 'Generate Another')}</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Generate Another"):
             reset_state()
             st.rerun()
 
@@ -376,19 +537,25 @@ def render_audio_view() -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    ui = frontend_design.ui
     st.set_page_config(
-        page_title="podcastman — Blog to Podcast",
-        page_icon="🎙️",
-        layout="centered",
+        page_title=ui.page_title,
+        page_icon=ui.page_icon,
+        layout=ui.layout,
     )
 
+    inject_design_css()
     init_state()
     render_header()
 
     # Global error banner
     if st.session_state.get("error"):
         st.error(st.session_state["error"])
-        if st.button("✕ Dismiss"):
+        st.markdown(
+            f"<div class='pm-icon-label'>{icon_text('dismiss', 'Dismiss Error')}</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Dismiss"):
             st.session_state["error"] = None
             st.rerun()
 
@@ -406,8 +573,7 @@ def main() -> None:
     # Footer
     st.markdown(
         """
-        <div style="border-top:1px solid #333;padding-top:.75rem;margin-top:3rem;
-                    text-align:center;color:#666;font-size:.75rem">
+        <div class="pm-footer">
             podcastman v0.1.0 — LiteLLM · LangGraph · Google Cloud TTS · ChromaDB
         </div>
         """,

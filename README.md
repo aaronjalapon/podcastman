@@ -114,4 +114,36 @@ Blog Input → Content Ingestion → RAG Knowledge Base (ChromaDB)
 
 ## Configuration
 
-All settings via `.env` — see `.env.example` for available options.
+Most runtime settings are configured via `.env` (see `.env.example`).
+
+Frontend design settings are configured in root `config.toml`:
+
+```toml
+[ui]
+page_title = "podcastman - Blog to Podcast"
+page_icon = "PM"
+app_name = "podcastman"
+tagline = "Blog to Podcast with AI"
+layout = "centered"
+
+[theme]
+primary_color = "#0b5fff"
+accent_color = "#12b886"
+background_start = "#f4f8ff"
+background_end = "#eefaf4"
+surface_color = "#ffffff"
+text_color = "#0f172a"
+muted_text_color = "#5b6472"
+border_color = "#d6deea"
+font_family = "'Space Grotesk', 'Segoe UI', sans-serif"
+mono_font_family = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
+
+[icons]
+generate = "fa-solid fa-wand-magic-sparkles"
+download = "fa-solid fa-download"
+```
+
+Notes:
+- Emoji-based UI labels were removed from the frontend.
+- Font Awesome class names are mapped by semantic key in `[icons]`.
+- If `config.toml` is missing or invalid, safe defaults are applied.
